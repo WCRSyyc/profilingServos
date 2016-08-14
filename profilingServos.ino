@@ -64,7 +64,7 @@ const int LEDS = sizeof( ledPin ) / sizeof( int );
 #define ABRT_ZERO_LARGE 2
 #define ABRT_COARSE_EARLY 3
 #define ABRT_COARSE_SPLIT 4
-#define ABRT_NOT_COVERED 5
+#define ABRT_STOP_AFTER_EDGE 5
 #define ABRT_FINE_START_UNCOVERED 6
 #define ABRT_FINE_MISSED_BAR 7
 
@@ -282,12 +282,10 @@ unsigned int fineTuneZeros( unsigned int * cwZero, unsigned int * ccwZero )
   slowestCw = coarseZeroBoundary( true, baseStop, COARSE_ZERO_WAIT );
   tstServo.writeMicroseconds( baseStop ); // DEBUG
   Serial.println(F( "Done CW coarseZeroBoundary" )); // DEBUG
-  delay( 5000 ); // DEBUG
 
   slowestCcw = coarseZeroBoundary( false, baseStop, COARSE_ZERO_WAIT ); // counterclockwise
   tstServo.writeMicroseconds( baseStop ); // DEBUG
   Serial.println(F( "Done CCW coarseZeroBoundary" )); // DEBUG
-  // delay( 5000 ); // DEBUG
 
   * cwZero = slowestCw + 1;
   * ccwZero = slowestCcw - 1;
@@ -460,7 +458,7 @@ unsigned int fineZeroBOundary( const int forwardSetting, const int backwardSetti
   Serial.println ( gBuf ); // DEBUG
 
   // Find the encoder bar edge by rotating backward from the direction being worked
-  seekElapsed = seekNextEdge ( backwardSetting - wrkStep, fullStop, timeLimit, NULL );
+  seekElapsed = seekNextEdge ( HIGH, backwardSetting - wrkStep, fullStop, timeLimit, NULL );
   // timeOut = ( seekElapsed == INFINITE_TIME );
   if ( seekElapsed == INFINITE_TIME ) {
     sprintf_P ( gBuf, PSTR ( "%lu" ), backwardSetting - wrkStep );
@@ -470,7 +468,7 @@ unsigned int fineZeroBOundary( const int forwardSetting, const int backwardSetti
   Serial.println ( gBuf ); // DEBUG
   delay ( BRAKING_MILLIS ); // come to a complete stop
 
-  seekElapsed = seekNextEdge ( forwardSetting + wrkStep, fullStop, timeLimit, NULL );
+  seekElapsed = seekNextEdge ( LOW, forwardSetting + wrkStep, fullStop, timeLimit, NULL );
   if ( seekElapsed == INFINITE_TIME ) {
     sprintf_P ( gBuf, PSTR ( "%lu" ), forwardSetting + wrkStep );
     abortAndReport ( ABRT_FINE_MISSED_BAR );
@@ -499,24 +497,26 @@ int RotationDirectionStep ( const bool rotIsCw )
 
 
 /**
- * Attempt to detect an edge of the encoder bar
+ * Attempt to detect an edge of the encoder bar : sensor state transition
  *
- * @param seekSetting - servo setting (µs) to use for attempt, or 0 to use current
+ * @param startSenseState - the current sensor state, to detect transistion away from
+ * @param seekSetting - servo setting (µs) to use for attempt, or 0 to continue using current
  * @param endSetting - servo setting (µs) to set after success or fail, 0 for no change
  * @param timeLimit - maximum time (µs) to wait for transition
  * @param refTime - address of reference time
  *   when not null, and seekSetting == zero, contains start time to measure from
  *   when not null, and endSetting == zero, will hold detected transition time
- * @returns elapsed microseconds for search, or -1ul on timeout
+ * @returns elapsed microseconds for search
+ *   -1ul on timeout
+ *   0 when initial state is already past the expected transistion
  */
 unsigned long
-seekNextEdge ( const unsigned int seekSetting, const unsigned int endSetting,
+seekNextEdge ( const bool startSenseState, const unsigned int seekSetting, const unsigned int endSetting,
   const unsigned long timeLimit, unsigned long * refTime )
 {
-  unsigned long startRef, elapsedMicros, seekLimit;
-  int startSenseState;
+  unsigned long startRef, transitionRef, seekLimit; // Time stamps (µs)
 
-  startSenseState = digitalRead( sensePin ); // The initial state
+  // Get the starting time stamp reference used to check for timeout
   if ( seekSetting != 0 ) {
     tstServo.writeMicroseconds( seekSetting );
     startRef = micros();
@@ -525,37 +525,68 @@ seekNextEdge ( const unsigned int seekSetting, const unsigned int endSetting,
   } else {
     startRef = * refTime;
   }
-
-  seekLimit = startRef + timeLimit;
+  seekLimit = startRef + timeLimit; // Time stamp reference when timeout will occur
   // TODO if seekLimit < startReff abortAndReport (ABRT_MICROS_WRAPPED)
+
+  if( digitalRead( sensePin ) != startSenseState ) { // Transition already past
+    updateDetectionTime( endSetting, refTime, startRef );
+    return 0ul;
+  }
 
   while( digitalRead( sensePin ) == startSenseState ) { // wait for transistion (edge)
     if ( micros() > seekLimit ) { // Taking too long, not moving (fast enough)
-      if ( endSetting != 0 ) {
-        tstServo.writeMicroseconds( endSetting );
-        // IDEA for fastest (loop) processing, check endSetting at the top, then
-        // have duplicate code, and 2 (or more?) code paths, so the extra check
-        // is not needed inside the detection loop.
-      } else if ( refTime != NULL ) {
-        // Pass the starting time reference back to caller, incase want to
-        // continue timing after timout
-        * refTime = startRef;
-      }
+      // Update target speed and save starting time, in case want to continue
+      // timing after timeout
+      updateDetectionTime( endSetting, refTime, startRef );
       return INFINITE_TIME; // Timeout occurred
     }// ./if ( micros() > seekLimit )
-  }// ./while( digitalRead( sensePin ) == startSenseState )
-  elapsedMicros = micros(); // Encoder edge detected
+  }// ./while( digitalRead( senselapsedMicrosePin ) == startSenseState )
+  transitionRef = micros(); // Encoder edge detected
+  updateDetectionTime( endSetting, refTime, transitionRef ); // Set speed; save time stamp
 
-  if ( endSetting != 0 ) {
-    tstServo.writeMicroseconds( endSetting );
-  } else if ( refTime != NULL ) {
-    // Pass the detection time reference back to the caller, to allow timing to
-    // continue without interruption
-    * refTime = elapsedMicros;
-  }
-
-  return elapsedMicros - startRef;
+  return transitionRef - startRef; // elapsed time (µs)
 }// ./unsigned long seekNextEdge (…)
+
+
+/**
+ * Bring servo to a full stop
+ *
+ * Fatal error if sensor state changes before braking time (timeout)
+ *
+ * @param startSenseState - the current sensor state when braking was started
+ * @param stopSetting - servo target setting that should mean zero rotation
+ * @param brakeTime - the time (µs) to wait before assuming target speed reached
+ */
+void brakeToStop ( const bool startSensorState, const unsigned int stopSetting,
+  const unsigned long brakeTime )
+{
+  unsigned int elapsedTime;
+
+  elapsedTime = seekNextEdge( startSensorState, stopSetting, 0, brakeTime, NULL );
+  if ( elapsedTime != INFINITE_TIME ) {
+    sprintf_P ( gBuf, "%d to %d in %lu µs (< %lu)",
+      startSensorState, !startSensorState, elapsedTime, brakeTime );
+    abortAndReport ( ABRT_STOP_AFTER_EDGE );
+  }
+}// ./void brakeToStop (…)
+
+
+/**
+ * Change the servo to a new target setting, and save the reference time stamp
+ *
+ * @param targetSetting - the new servo speed setting: 0 for no change
+ * @param timestamp - address to hold reference time only when changing speed
+ * @param refTime - the reference time for the setting change (µs)
+ */
+void updateDetectionTime( const unsigned int targetSetting,
+  unsigned long * timestamp, const unsigned long refTime )
+{
+  if ( targetSetting != 0 ) {
+    tstServo.writeMicroseconds( targetSetting ); // Change to new setting speed
+  } else if ( timestamp != NULL ) {
+    * timestamp = refTime;
+  }
+}// ./updateDetectionTime(…)
 
 
 /**
@@ -576,42 +607,36 @@ bool findEncoderBarEdge ( const unsigned int foreSpeed, const unsigned int backS
     const unsigned int baseStop, const unsigned long timeLimit )
 {
   unsigned int timeoutSpeed;
-  unsigned long startTime;
+  unsigned long startTime, elapsedTime;
   bool timeOut = false;
   Serial.print (F( "Forward/backward speed: " ));
   Serial.print ( foreSpeed );
   Serial.print (F( "/" ));
   Serial.println ( backSpeed );
 
-  if( digitalRead( sensePin ) == LOW ) { // encoder bar is not covering sensor
-    // Rotate backward enough for the encoder bar to block the sensor
-    // Timeout is not important here
-    // timeOut =
-    seekEdgeOfBar( backSpeed, baseStop, NULL );
-    // start DEBUG block
-    tstServo.writeMicroseconds( baseStop );
-    Serial.println (F( "done seekEdgeOfBar" ));
-    delay ( 5000 );
-    // end DEBUG block
-  }// ./if( digitalRead( sensePin ) == LOW )
-
-  if( digitalRead( sensePin ) == LOW ) { // Sanity check
-    sprintf_P ( gBuf, PSTR ( "%s" ), (foreSpeed > baseStop) ? "CCW" : "CW" );
-    abortAndReport( ABRT_NOT_COVERED ); // Encoder bar is not blocking the sensor
-  }
-
-  // The encoder bar is currently covering the sensor
-
   // Rotate encoder bar forward enough to get bar clear of the sensor
-  timeoutSpeed = foreSpeed + getTimeoutSpeed( foreSpeed, baseStop);
-  tstServo.writeMicroseconds( foreSpeed );
-  startTime = micros();
-  while( digitalRead( sensePin ) == HIGH ) { // Wait until encoder bar uncovers sensor
-    timeOut = accelOnTimeOut ( timeOut, startTime, timeLimit, timeoutSpeed );
-  }// ./while( digitalRead( sensePin ) == HIGH )
+  elapsedTime = seekNextEdge ( HIGH, foreSpeed, baseStop, timeLimit, NULL );
+  if ( elapsedTime == 0 ) { // Sensor not currently covering sensor
+    // Rotate backward enough for the encoder bar to block the sensor
+    elapsedTime = seekNextEdge ( LOW, backSpeed, baseStop, timeLimit, NULL );
+    if ( elapsedTime == INFINITE_TIME ) {
+      elapsedTime = seekNextEdge ( LOW, getTimeoutSpeed( backSpeed, baseStop),
+        baseStop, INFINITE_TIME, NULL );
+    }
+    Serial.println (F( "done backward seekEdgeOfBar" ));
+    // if ( elapsedTime == 0 ) { abortAndReport(); }
+    brakeToStop( HIGH, baseStop, BRAKING_MILLIS );
 
-  // The encoder bar is not (any longer) blocking the sensor
-  tstServo.writeMicroseconds( baseStop );// Stop there
+    // Try rotate forward again
+    elapsedTime = seekNextEdge ( HIGH, foreSpeed, baseStop, timeLimit, NULL );
+  }
+  timeOut = elapsedTime == INFINITE_TIME;
+  if ( timeOut ) {
+    elapsedTime = seekNextEdge ( HIGH, foreSpeed + getTimeoutSpeed( foreSpeed, baseStop), baseStop, timeLimit, NULL );
+  }
+  // if ( elapsedTime == 0 ) { abortAndReport(); }
+
+  // The encoder bar is not (any longer) blocking the sensor, and rotation stopped
 
   return timeOut;
 }// ./bool findEncoderBarEdge (…)
@@ -809,7 +834,7 @@ unsigned long timeBarCrossing( const int timeTarget, const int stopTarget )
  *
  * Find the leading (based on rotation direction) edge of the encoder bar
  *
- * NOTE One exit, the servo will still be rotating, either at the intially
+ * NOTE On exit, the servo will still be rotating, either at the intially
  *  requested speed, or the faster adjusted speed, if a timeout occured
  *
  * @param seekSpeed - servo setting to use while looking for the edge of the bar
@@ -822,7 +847,7 @@ bool seekEdgeOfBar( const unsigned int seekSpeed, const unsigned int stopTarget,
 {
   const unsigned long SEEK_TIMEOUT = 5000000; // µs (5 seconds)
   const unsigned long EXITBAR_TIMEOUT = 1000000; // µs (1 second)
-  unsigned long seekStart;
+  unsigned long seekStart, elapsedTime;
   unsigned int timeoutSpeed;
   bool timeOut = false;
 
@@ -840,21 +865,35 @@ bool seekEdgeOfBar( const unsigned int seekSpeed, const unsigned int stopTarget,
     //        This *should* generally be faster, but that 'far enough' qualifier
     //        is not easy to determine.  The usual point that this code is
     //        called from does not yet have good information about the rotation
-    //        speed, or wheter the stopTarget is really stopped.
-    while( digitalRead( sensePin ) == HIGH ) { // Wait until encoder bar uncovers sensor
-      timeOut = accelOnTimeOut ( timeOut, seekStart, EXITBAR_TIMEOUT, timeoutSpeed );
-    }// ./while( digitalRead( sensePin ) == HIGH )
+    //        speed, or whether the stopTarget is really stopped.
+    // HPD alt code for refactor to ?common? seekNextEdge()
+
+    // Wait until encoder bar uncovers sensor
+    elapsedTime = seekNextEdge( HIGH, 0, 0, EXITBAR_TIMEOUT, & seekStart );
+    if ( elapsedTime == INFINITE_TIME ) { // Timeout in intial seek
+      // Continue at faster speed
+      elapsedTime = seekNextEdge( HIGH, timeoutSpeed, 0, INFINITE_TIME, & seekStart );
+    }
+    // while( digitalRead( sensePin ) == HIGH ) { // Wait until encoder bar uncovers sensor
+    //   timeOut = accelOnTimeOut ( timeOut, seekStart, EXITBAR_TIMEOUT, timeoutSpeed );
+    // }// ./while( digitalRead( sensePin ) == HIGH )
   }// ./if( digitalRead( sensePin ) == HIGH )
 
   // Servo is set to the requested rotation speed (or more if already timed
   // out), and the bar is (now) NOT covering the sensor.
 
   seekStart = micros(); // For timeout testing
-  while( digitalRead( sensePin ) == LOW ) { // Wait until encoder bar is over sensor
-    timeOut = accelOnTimeOut ( timeOut, seekStart, SEEK_TIMEOUT, timeoutSpeed );
-  }// ./while( digitalRead( sensePin ) == LOW )
+  elapsedTime = seekNextEdge( LOW, 0, 0, SEEK_TIMEOUT, & seekStart );
+  timeOut = (elapsedTime == INFINITE_TIME);
+  if ( timeOut ) {
+    elapsedTime = seekNextEdge( LOW, timeoutSpeed, 0, SEEK_TIMEOUT, & seekStart );
+  }
+  // while( digitalRead( sensePin ) == LOW ) { // Wait until encoder bar is over sensor
+  //   timeOut = accelOnTimeOut ( timeOut, seekStart, SEEK_TIMEOUT, timeoutSpeed );
+  // }// ./while( digitalRead( sensePin ) == LOW )
   if ( foundTime != NULL ) {
-    * foundTime = micros(); // Save timestamp when the edge of the bar was found
+    * foundTime = seekStart; // Save timestamp when the edge of the bar was found
+    // * foundTime = micros(); // Save timestamp when the edge of the bar was found
   }
 
   return timeOut; // Let caller know if a time out occurred while seeking
@@ -1482,11 +1521,11 @@ void abortAndReport( const unsigned int abortStatus )
     case ABRT_COARSE_SPLIT:
       sprintf_P ( msgBuf, PSTR ( "sensor blocked in FineTuneZero CCW check before end timer" ));
       break;
-    case ABRT_NOT_COVERED:
-      sprintf_P ( msgBuf, PSTR ( "Sensor not being blocked after %s positioning" ), gBuf );
-      break;
     case ABRT_FINE_START_UNCOVERED:
       sprintf_P ( msgBuf, PSTR ( "Sensor not covered when starting fineZeroBoundary" ));
+      break;
+    case ABRT_STOP_AFTER_EDGE:
+      sprintf_P ( msgBuf, PSTR ( "Did not stop fast enough: Sensor changed from %s" ), gBuf );
       break;
     case ABRT_FINE_MISSED_BAR:
       sprintf_P ( msgBuf, PSTR ( "Did not locate encoder bar with setting %s" ), gBuf );
@@ -1559,4 +1598,3 @@ void blinkCode ( const unsigned int val )
     }// ./if (( blinkCount % BLINK_GROUP ) == 0 )
   } while ( true );
 }// ./void blinkCode (…)
-
