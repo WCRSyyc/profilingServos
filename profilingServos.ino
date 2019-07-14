@@ -8,7 +8,7 @@ https://github.com/WCRSyyc/omni3-follower/blob/master/omni3-follower.ino
 
 Regular / typical continuous turn servos have a control range from about 1000 to
 2000 microseconds.  The lower values cause clockwise rotation, the higher values
-caise counterclockwise rotation, with some value inbetween setting no rotation.
+caise counterclockwise rotation, with some value between setting no rotation.
 
 For logging (Serial Monitor is awkward to capture from)
 putty -serial -sercfg 8,n,1,115200,N -title 'Servo Speed Calibration' \
@@ -140,22 +140,35 @@ void setup( void )
 
   sprintf_P ( gBuf, PSTR ( "Start of Servo Speed Calibration\nServo %c, Samples/Set = %d\n" ),
     'A' + servoIdx, SAMPLES );
-  Serial.println( gBuf );
+  Serial.println ( gBuf );
 }// ./setup(…)
 
 void loop( void )
 {
   unsigned int zeroCw, zeroCcw, fullStop;
   // int wrkStep; // TESTING
+  unsigned long elapsedTime[ 4 ]; // TESTING
 
-  // SETTLE_MILLIS = BASE_SETTLE;
-  // BRAKING_MILLIS = BASE_BRAKING;
+  SETTLE_MILLIS = BASE_SETTLE;
+  BRAKING_MILLIS = BASE_BRAKING;
+
+  // HPD start of huntForZero
+  elapsedTime[ 0 ] = seekNextEdge( HIGH, 1000, 0, -1ul, NULL ); // Rotate encoder bar over sensor
+  elapsedTime[ 1 ] = seekNextEdge( LOW, 1000, 0, -1ul, NULL ); // Rotate encode bar past sensor
+  elapsedTime[ 2 ] = seekNextEdge( HIGH, 1000, 1466, SETTLE_MILLIS, NULL );
+  elapsedTime[ 3 ] = seekNextEdge( HIGH, 1000, 0, BRAKING_MILLIS, NULL );// Wait until stopped
+  sprintf_P ( gBuf, PSTR ( "Times: [%lu, %lu, %lu, %lu]" ),
+    elapsedTime[ 0 ], elapsedTime[ 1 ], elapsedTime[ 2 ], elapsedTime[ 3 ]);
+  Serial.println ( gBuf );
+  delay ( 10000 ); // TESTING 10 seconds
+  return; // TESTING
+
   // huntForZero( & zeroCw, & zeroCcw );
   // fullStop = zeroCw + div2rounded( zeroCcw - zeroCw );
-  // tstServo.writeMicroseconds( fullStop ); // DEBUG
+  // brakeToStop( digitalRead( sensePin ), fullStop, BRAKING_MILLIS ); // DEBUG
   // sprintf_P ( gBuf, PSTR ( "cw zero@%u, ccw zero@%u, zero@%u" ),
   //   zeroCw, zeroCcw, fullStop );
-  // Serial.println( gBuf );
+  // Serial.println ( gBuf );
   // delay ( 5000 );
 
   // Since the hunting always does timing in CW and CCW pairs, the system
@@ -169,15 +182,15 @@ void loop( void )
   zeroCw = 1466;
   zeroCcw = 1467;
   // timeBarCrossing( 1450, 1466 ); // Slow CW, ignore time result
-  // tstServo.writeMicroseconds( 1466 ); // DEBUG
+  // brakeToStop( digitalRead( sensePin ), 1466, BRAKING_MILLIS ); // DEBUG
   // Serial.println (F( "done initial timeBarCrossing" ));
   // delay ( 5000 );
   // Stopped with bar just CCW from sensor
   fullStop = fineTuneZeros( & zeroCw, & zeroCcw );
-  tstServo.writeMicroseconds( fullStop ); // DEBUG
+  brakeToStop( digitalRead( sensePin ), fullStop, BRAKING_MILLIS ); // DEBUG
   sprintf_P ( gBuf, PSTR ( "cw zero@%u, ccw zero@%u, zero@%u" ),
     zeroCw, zeroCcw, fullStop );
-  Serial.println( gBuf );
+  Serial.println ( gBuf );
   delay ( 2000 );
   allLEDoff();
   // end DEBUG block
@@ -192,11 +205,11 @@ void loop( void )
 
   // autoCalibrateSensor();
   // delay( 5000 ); // 5 seconds
-  // Serial.println(F( "ClockWise" ));
+  // Serial.println (F( "ClockWise" ));
   // timeRotations( 900, 1220, 20 ); // Fast CW
-  // Serial.println(F( "CounterClockWise" ));
+  // Serial.println (F( "CounterClockWise" ));
   // timeRotations( 1620, 2100, 20 ); // Fast CCW
-  // Serial.println(F( "start ClockWise" ));
+  // Serial.println (F( "start ClockWise" ));
   // timeRotations( 1220, 1620, 20 ); // CW slowing, then CCW speeding
 
 
@@ -206,14 +219,14 @@ void loop( void )
   //   Serial.println (F( "\nfindEncoderBarEdge:CCW" )); // TESTING
   //   wrkStep = 1; // counterclockwise // TESTING
   //   findEncoderBarEdge( 1466 + 12 * wrkStep, 1466 - 12 * wrkStep, 1466, 1000000 ); // TESTING
-  //   tstServo.writeMicroseconds( 1466 ); // TESTING
+  //   brakeToStop( digitalRead( sensePin ), 1466, BRAKING_MILLIS ); // TESTING
   //   Serial.println (F( "Edge found: bar sitting CCW from sensor" )); // TESTING
   //   delay ( 10000 ); // DEBUG
   //
   //   Serial.println (F( "findEncoderBarEdge:CW" )); // TESTING
   //   wrkStep = -1; // clockwise // TESTING
   //   findEncoderBarEdge( 1466 + 12 * wrkStep, 1466 - 12 * wrkStep, 1466, 1000000 ); // TESTING
-  //   tstServo.writeMicroseconds( 1466 ); // TESTING
+  //   brakeToStop( digitalRead( sensePin ), 1466, BRAKING_MILLIS ); // TESTING
   //   Serial.println (F( "Edge found: bar sitting CW from sensor" )); // TESTING
   //   delay ( 20000 ); // DEBUG
   // } while ( true );
@@ -227,7 +240,7 @@ void loop( void )
   //   timeOut = seekEdgeOfBar( 1490, 1466, & sawAt );
   //   // timeOut = seekEdgeOfBar( 1490, 1466, NULL ); // (with NULL)
   //   // sawAt = micros();
-  //   tstServo.writeMicroseconds( 1466 ); // DEBUG
+  //   brakeToStop( digitalRead( sensePin ), 1466, BRAKING_MILLIS ); // DEBUG
   //   sprintf_P ( gBuf, PSTR ( "After seekEdgeOfBar test: %lu; %d" ), sawAt - tstStart, timeOut );
   //   Serial.println ( gBuf );
   //   delay ( 5000 );
@@ -280,12 +293,12 @@ unsigned int fineTuneZeros( unsigned int * cwZero, unsigned int * ccwZero )
 
   // Do coarse search for slowest (still moving) CW and CCW servo settings
   slowestCw = coarseZeroBoundary( true, baseStop, COARSE_ZERO_WAIT );
-  tstServo.writeMicroseconds( baseStop ); // DEBUG
-  Serial.println(F( "Done CW coarseZeroBoundary" )); // DEBUG
+  brakeToStop( digitalRead( sensePin ), baseStop, BRAKING_MILLIS ); // DEBUG
+  Serial.println (F( "Done CW coarseZeroBoundary" )); // DEBUG
 
   slowestCcw = coarseZeroBoundary( false, baseStop, COARSE_ZERO_WAIT ); // counterclockwise
-  tstServo.writeMicroseconds( baseStop ); // DEBUG
-  Serial.println(F( "Done CCW coarseZeroBoundary" )); // DEBUG
+  brakeToStop( digitalRead( sensePin ), baseStop, BRAKING_MILLIS ); // DEBUG
+  Serial.println (F( "Done CCW coarseZeroBoundary" )); // DEBUG
 
   * cwZero = slowestCw + 1;
   * ccwZero = slowestCcw - 1;
@@ -376,16 +389,16 @@ unsigned int coarseZeroBoundary( const bool isCw,
     timeOut = findEncoderBarEdge( stopSetting - 12 * wrkStep,
       stopSetting + 12 * wrkStep, stopSetting, timeLimit );
     sprintf_P ( gBuf, PSTR ( "First %s findEncoderBarEdge timed out" ), barEdge ); // DEBUG
-    Serial.println( gBuf ); // DEBUG
+    Serial.println ( gBuf ); // DEBUG
   }
   // start DEBUG block
   if ( timeOut ) {
     sprintf_P ( gBuf, PSTR ( "%s findEncoderBarEdge retry also timed out" ), barEdge );
-    Serial.println( gBuf );
+    Serial.println ( gBuf );
   }
-  tstServo.writeMicroseconds( stopSetting );
+  brakeToStop( digitalRead( sensePin ), stopSetting, BRAKING_MILLIS ); // DEBUG
   sprintf_P ( gBuf, PSTR ( "Rotation stopped with encoder bar just %s from sensor" ), barEdge );
-  Serial.println( gBuf );
+  Serial.println ( gBuf );
   delay ( 5000 );
   // end DEBUG block
 
@@ -405,14 +418,14 @@ unsigned int coarseZeroBoundary( const bool isCw,
       }
     }// ./while( digitalRead( sensePin ) == LOW )
     sprintf_P ( gBuf, PSTR ( "Done coarse check @%u" ), wrkSpeed ); // DEBUG
-    Serial.println( gBuf ); // DEBUG
+    Serial.println ( gBuf ); // DEBUG
   }// ./while( digitalRead( sensePin ) == LOW )
   if ( startRef == INFINITE_TIME ) { abortAndReport( ABRT_COARSE_EARLY ); }
   if ( edgeReached == INFINITE_TIME ) { abortAndReport( ABRT_COARSE_SPLIT ); }
   sprintf_P ( gBuf, PSTR (
     "Took %lu µs coarse rotating to block sensor@%u, starting from %u" ),
     edgeReached - startRef, wrkSpeed, stopSetting ); // DEBUG
-  Serial.println( gBuf ); // DEBUG
+  Serial.println ( gBuf ); // DEBUG
 
   // Sensor is covered by encoder bar
 
@@ -620,7 +633,7 @@ bool findEncoderBarEdge ( const unsigned int foreSpeed, const unsigned int backS
     // Rotate backward enough for the encoder bar to block the sensor
     elapsedTime = seekNextEdge ( LOW, backSpeed, baseStop, timeLimit, NULL );
     if ( elapsedTime == INFINITE_TIME ) {
-      elapsedTime = seekNextEdge ( LOW, getTimeoutSpeed( backSpeed, baseStop),
+      elapsedTime = seekNextEdge ( LOW, getBoostSpeed( backSpeed, baseStop),
         baseStop, INFINITE_TIME, NULL );
     }
     Serial.println (F( "done backward seekEdgeOfBar" ));
@@ -632,7 +645,8 @@ bool findEncoderBarEdge ( const unsigned int foreSpeed, const unsigned int backS
   }
   timeOut = elapsedTime == INFINITE_TIME;
   if ( timeOut ) {
-    elapsedTime = seekNextEdge ( HIGH, foreSpeed + getTimeoutSpeed( foreSpeed, baseStop), baseStop, timeLimit, NULL );
+    elapsedTime = seekNextEdge ( HIGH, getBoostSpeed( foreSpeed, baseStop),
+      baseStop, timeLimit, NULL );
   }
   // if ( elapsedTime == 0 ) { abortAndReport(); }
 
@@ -721,7 +735,7 @@ void saveProfileTime( const unsigned int cwTest, const unsigned int ccwTest, con
   // IDEA Could fill in a sparse / associative array structure instead of printing
   sprintf_P ( gBuf, PSTR ( "%u, %lu, %u, %lu" ),
     cwTest, xingTimeCw, ccwTest, xingTimeCcw );
-  Serial.println( gBuf );
+  Serial.println ( gBuf );
 }// ./void saveProfile%Time(…)
 
 
@@ -739,20 +753,27 @@ void saveProfileTime( const unsigned int cwTest, const unsigned int ccwTest, con
  * @param cwZero - address of int to store first (lowest) zero motion setting
  * @param ccwZero - address of int to store last (hightest) zero motion setting
  */
-void huntForZero( unsigned int * cwZero, unsigned int * ccwZero )
+void huntForZero ( unsigned int * cwZero, unsigned int * ccwZero )
 {
   // Variables to hold target servo settings values
   unsigned int tentativeZeroPoint, cw, ccw;
   unsigned long cwTime = 0, ccwTime = 0;//, junkTime;
 
-  cw = MAX_CW;   // Start at the full (maximum) speed both clockwise and
-  ccw = MAX_CCW; // counterclockwise.
-  // Assume (to start) that full stop is mid way between full speed CW and CCW
+  cw = MAX_CW;   // Start at the full (maximum) range both clockwise and
+  ccw = MAX_CCW; // counterclockwise.  (Approximately maximum speed for each)
+  // Assume (to start) that full stop is mid way between full range CW and CCW
   tentativeZeroPoint = MAX_CW + div2rounded( MAX_CCW - MAX_CW );
 
-  Serial.println(F( "searching..." ));
-  // Find the encoder bar, and move it a bit past the sensor location
+  Serial.println (F( "searching..." ));
+  // Find the encoder bar, and rotate it a bit past the sensor location
   timeBarCrossing( ccw, tentativeZeroPoint );
+  // Need to find the falling edge of the sensor state transistions, then continue
+  // for additional time.
+  // HPD
+  seekNextEdge( HIGH, ccw, 0, -1ul, NULL ); // Rotate encoder bar over sensor
+  seekNextEdge( LOW, ccw, 0, -1ul, NULL ); // Rotate encode bar past sensor
+  seekNextEdge( HIGH, ccw, tentativeZeroPoint, SETTLE_MILLIS, NULL );
+  seekNextEdge( HIGH, ccw, 0, BRAKING_MILLIS, NULL );// Wait until stopped
 
   do {
     if ( cwTime == INFINITE_TIME ) {
@@ -783,7 +804,7 @@ void huntForZero( unsigned int * cwZero, unsigned int * ccwZero )
   } while ( ccwTime != INFINITE_TIME || cwTime != INFINITE_TIME );// Still detecting motion
   // tentativeZeroPoint = estimateZeroSetting( cw, ccw, cwTime, ccwTime );
   // sprintf_P ( gBuf, PSTR ( "End Search@%u,%u@%u" ), cw, ccw, tentativeZeroPoint );
-  // Serial.println( gBuf );
+  // Serial.println ( gBuf );
   * cwZero = cw;
   * ccwZero = ccw;
 }// ./void huntForZero(…)
@@ -806,7 +827,7 @@ unsigned long timeBarCrossing( const int timeTarget, const int stopTarget )
   unsigned int accelSpeed;
   bool timeOut;
 
-  accelSpeed = getTimeoutSpeed( timeTarget, stopTarget );
+  accelSpeed = getBoostSpeed( timeTarget, stopTarget );
   timeOut = seekEdgeOfBar( timeTarget, stopTarget, & startXsing );
   // With a *good* stop value, and starting with sensor blocked, the following
   // waits forever
@@ -851,7 +872,7 @@ bool seekEdgeOfBar( const unsigned int seekSpeed, const unsigned int stopTarget,
   unsigned int timeoutSpeed;
   bool timeOut = false;
 
-  timeoutSpeed = getTimeoutSpeed( seekSpeed, stopTarget );
+  timeoutSpeed = getBoostSpeed( seekSpeed, stopTarget );
 
   seekStart = micros(); // For timeout testing
   tstServo.writeMicroseconds( seekSpeed );
@@ -874,23 +895,18 @@ bool seekEdgeOfBar( const unsigned int seekSpeed, const unsigned int stopTarget,
       // Continue at faster speed
       elapsedTime = seekNextEdge( HIGH, timeoutSpeed, 0, INFINITE_TIME, & seekStart );
     }
-    // while( digitalRead( sensePin ) == HIGH ) { // Wait until encoder bar uncovers sensor
-    //   timeOut = accelOnTimeOut ( timeOut, seekStart, EXITBAR_TIMEOUT, timeoutSpeed );
-    // }// ./while( digitalRead( sensePin ) == HIGH )
   }// ./if( digitalRead( sensePin ) == HIGH )
 
   // Servo is set to the requested rotation speed (or more if already timed
   // out), and the bar is (now) NOT covering the sensor.
 
+  // Wait until encoder bar is over sensor
   seekStart = micros(); // For timeout testing
   elapsedTime = seekNextEdge( LOW, 0, 0, SEEK_TIMEOUT, & seekStart );
   timeOut = (elapsedTime == INFINITE_TIME);
   if ( timeOut ) {
     elapsedTime = seekNextEdge( LOW, timeoutSpeed, 0, SEEK_TIMEOUT, & seekStart );
   }
-  // while( digitalRead( sensePin ) == LOW ) { // Wait until encoder bar is over sensor
-  //   timeOut = accelOnTimeOut ( timeOut, seekStart, SEEK_TIMEOUT, timeoutSpeed );
-  // }// ./while( digitalRead( sensePin ) == LOW )
   if ( foundTime != NULL ) {
     * foundTime = seekStart; // Save timestamp when the edge of the bar was found
     // * foundTime = micros(); // Save timestamp when the edge of the bar was found
@@ -908,7 +924,7 @@ bool seekEdgeOfBar( const unsigned int seekSpeed, const unsigned int stopTarget,
  * @returns adjusted 'in motion' servo speed setting that is a little faster
  *   in the same direction as baseSpeed
  */
-unsigned int getTimeoutSpeed( const unsigned int baseSpeed,
+unsigned int getBoostSpeed( const unsigned int baseSpeed,
     const unsigned int stopSpeed )
 {
   const unsigned int SPEEDUP = 8; // µs; enough setting delta to get moving
@@ -918,34 +934,7 @@ unsigned int getTimeoutSpeed( const unsigned int baseSpeed,
   }// ./if ( seekSpeed > stopSpeed )
 
   return baseSpeed - SPEEDUP; // More CW
-}// ./unsigned int getTimeoutSpeed(…)
-
-
-/**
- * Adjust servo speed setting when a time out occurs, from starting reference time.
- *
- * @param isTimeOut - flag indicating whether or not previously timed out
- * @param startRef - timestamp reference to base time out check on
- * @param seekLimit - delta time that indicates a time out condition
- * @param altSpeed - new speed if time out occurs
- * @returns (new or previous) time out state flag
- */
-bool accelOnTimeOut ( const bool isTimedOut, const unsigned long startRef,
-    const unsigned long seekLimit, const unsigned int altSpeed )
-{
-  bool rslt = isTimedOut;
-
-  if ( !isTimedOut ) { // Have not already adjusted the servo speed setting
-    // Following test fails if micros() wraps from maximum back to zero (every hour+)
-    if (( micros() - startRef )> seekLimit ) { // Give up
-      // Not finding the edge of the bar: moving too slow (or too impatient)
-      rslt = true;
-      tstServo.writeMicroseconds( altSpeed );
-    }// ./if (( micros() - curSpeed )> seekLimit )
-  }// ./if ( !timeOut )
-
-  return rslt;
-}// ./bool = accelOnTimeOut (…)
+}// ./unsigned int getBoostSpeed(…)
 
 
 /**
@@ -972,7 +961,7 @@ unsigned int estimateZeroSetting( const unsigned int cw, const unsigned int ccw,
   // sprintf_P ( gBuf, PSTR ( "mid:%u|%u=%u; tm:%lu/%lu; %s" ),
   //   ccw, cw, midSetting, max( cwTime, ccwTime ), min( cwTime, ccwTime ),
   //   (ccwTime > cwTime) ? "c" : "" ); // DEBUG
-  // Serial.print( gBuf ); // DEBUG
+  // Serial.print ( gBuf ); // DEBUG
 
   if ( cwTime == ccwTime ) {
     // midAdjust1 = 0; // DEBUG
@@ -1001,7 +990,7 @@ unsigned int estimateZeroSetting( const unsigned int cw, const unsigned int ccw,
   }// ./else NOT ( cwTime == ccwTime )
   // sprintf_P ( gBuf, PSTR ( "cw biggest; wrk:%lu,%lu; adj:%u,%u" ),
   //   wrk1, wrk2, midAdjust1, midAdjust, zeroEstimate ); // DEBUG
-  // Serial.println( gBuf ); // DEBUG
+  // Serial.println ( gBuf ); // DEBUG
 
   return zeroEstimate;
 }// ./unsigned int estimateZeroSetting(…)
@@ -1013,7 +1002,7 @@ void rptZeroSearch( unsigned int cw, unsigned int ccw,
   sprintf_P ( gBuf,
     PSTR ( "Target range: %u to %u; Times %lu, %lu: new estimate = %u" ),
     cw, ccw, cwTime, ccwTime, zero );
-  Serial.println( gBuf );
+  Serial.println ( gBuf );
 }// void rptZeroSearch(…)
 
 
@@ -1028,7 +1017,7 @@ void timeRotations( const unsigned int minPulse, const unsigned int maxPulse, co
 {
   unsigned int pulseTime;
 
-  Serial.println(F( "target, min, max, delta, total, average" ));
+  Serial.println (F( "target, min, max, delta, total, average" ));
   for (pulseTime = minPulse; pulseTime <= maxPulse; pulseTime += stepPulse)
   {
     getSamples( pulseTime, -1 );
@@ -1155,7 +1144,7 @@ void rptRotationTimes( const int idx, const unsigned long stTm, const unsigned l
 {
   sprintf_P ( gBuf, PSTR ( "Rotation %d: elapsed = %lu: start = %lu: end = %lu"),
     idx, enTm - stTm, stTm, enTm );
-  Serial.println( gBuf );
+  Serial.println ( gBuf );
 }// ./void rptRotationTimes(…)
 
 
@@ -1186,7 +1175,7 @@ void rptTimingSet( const unsigned int pulseSetting )
   sprintf_P ( gBuf, PSTR ( "%u, %u, %u, %u, %u, %u" ),
     pulseSetting, minElapsed, maxElapsed, minElapsed - maxElapsed, totElapsed,
     divRounded( totElapsed, SAMPLES ));
-  Serial.print( gBuf );
+  Serial.println ( gBuf );
 }// ./void rptTimingSet(…)
 
 
@@ -1208,7 +1197,7 @@ void autoCalibrateSensor( void )
   // range for normal servos.
   const int testSpeed[] = { 1350, 2000 };
   const int REPEAT_COUNT = 5;
-  Serial.println(F( "Starting speed sensor automatic calibration" ));
+  Serial.println (F( "Starting speed sensor automatic calibration" ));
   digitalWrite( ledPin[ AUTO_RUNNING ], HIGH );
 
   for ( int i = 0; i < PART_POINTS; i++ ) {
@@ -1222,7 +1211,7 @@ void autoCalibrateSensor( void )
       tstServo.writeMicroseconds( TEST_STOP ); // Tentative STOP setting
       sprintf_P ( gBuf, PSTR ( "%lu,%lu@%u" ),
         rotationParts[ i ].low, rotationParts[ i ].high, testSpeed[ i ]);
-      Serial.println( gBuf );
+      Serial.println ( gBuf );
       // end DEBUG block
     }
     rotationParts[ i ].low = ( accumLow * 2 + REPEAT_COUNT )/( 2 * REPEAT_COUNT );
@@ -1233,15 +1222,15 @@ void autoCalibrateSensor( void )
     // end DEBUG block
   }
 
-  Serial.println(F( "Have data for sensor calibration" )); // DEBUG
+  Serial.println (F( "Have data for sensor calibration" )); // DEBUG
   for ( int i = 0; i < PART_POINTS; i++ ) {
     rotationParts[ i ].total = rotationParts[ i ].low + rotationParts[ i ].high;
     rotationParts[ i ].highFraction = (double) rotationParts[ i ].high / rotationParts[ i ].total;
 
     sprintf_P ( gBuf, PSTR ( "Speed: %u, low: %lu, high: %lu, total: %lu, high franction: " ),
       rotationParts[ i ].low, rotationParts[ i ].high );
-    Serial.print( gBuf );
-    Serial.println( rotationParts[ i ].highFraction, 5 ); // sprintf not handle float
+    Serial.print ( gBuf );
+    Serial.println ( rotationParts[ i ].highFraction, 5 ); // sprintf not handle float
   }
   digitalWrite( ledPin[ AUTO_RUNNING ], LOW );
 }// ./void autoCalibrateSensor(…)
@@ -1335,7 +1324,7 @@ void tstGetRotParts( void )
       tstServo.writeMicroseconds( TEST_STOP ); // Tentative STOP setting
       sprintf_P ( gBuf, PSTR ( "%lu,%lu@%u" ),
         rotationParts[ tstIdx ].low, rotationParts[ tstIdx ].high, tstSetting[ i ]);
-      Serial.println( gBuf );
+      Serial.println ( gBuf );
       delay( 5000 ); // 5 seconds
     }
   }
