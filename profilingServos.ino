@@ -8,8 +8,7 @@ https://github.com/WCRSyyc/omni3-follower/blob/master/omni3-follower.ino
 
 Regular / typical continuous turn servos have a control range from about 1000 to
 2000 microseconds.  The lower values cause clockwise rotation, the higher values
-caise counterclockwise rotation, with some value between setting no rotation.
-
+cause counterclockwise rotation, with some value between setting no rotation.
 For logging (Serial Monitor is awkward to capture from)
 putty -serial -sercfg 8,n,1,115200,N -title 'Servo Speed Calibration' \
  -geometry 80x40+10+10 -cs 'UTF-8' -log Servo_«A¦B¦C»_calibration.csv /dev/ttyACM0
@@ -35,7 +34,7 @@ const int LEDS = sizeof( ledPin ) / sizeof( int );
 #define WAIT_BEGIN 1
 #define WAIT_MOST 2
 #define WAIT_END 3
-#define SENSE_EGHO 11
+#define SENSE_ECHO 11
 #define BIT_0 5
 #define BIT_1 6
 #define BIT_2 7
@@ -68,7 +67,7 @@ const int LEDS = sizeof( ledPin ) / sizeof( int );
 #define ABRT_FINE_START_UNCOVERED 6
 #define ABRT_FINE_MISSED_BAR 7
 
-// Full speed clockwise and counter CW settings for typical continious turn servo
+// Full speed clockwise and counter CW settings for typical continuous turn servo
 #define MAX_CW 1000
 #define MAX_CCW 2000
 
@@ -93,14 +92,14 @@ const int SERVOS = sizeof( servoPin ) / sizeof( int );
 
 // Pin connected to opto interrupter (sensor)
 const int sensePin = A0; // Analog pin, but treated as digital
-// IDEA check if digitalRead on a digtial pin is faster than on analog
+// IDEA check if digitalRead on a digital pin is faster than on analog
 // IDEA see if direct port read is faster than digitalRead, even with mask for single pin
 
 Servo tstServo;
 #define MAX_ROTATIONS 50
 unsigned long rotationTime[ MAX_ROTATIONS ];
 
-// Run Configuation
+// Run Configuration
 const int servoIdx = SERVO_C;
 // const int SAMPLES = MAX_ROTATIONS; // Might not be max later
 // const int SAMPLES = 30; // Might not be max later
@@ -257,7 +256,7 @@ void loop( void )
   // tstGetRotParts(); // TESTING
   // tstCSlow(); // TESTING
   // tstDispCnt(); // TESTING
-  // senseEcho(); //  * Locate the center setting, that gives 'full stop' for the continuous turn sero
+  // senseEcho(); //  * Locate the center setting, that gives 'full stop' for the continuous turn servo
   // ledTest(); // TESTING
 }// ./loop(…)
 
@@ -326,7 +325,7 @@ unsigned int fineTuneZeros( unsigned int * cwZero, unsigned int * ccwZero )
  * @param minZero - minimum servo setting (µs) initially detected as servo
  *   stopped.  Nearest value to clockwise rotation settings.
  * @param maxZero - maximum servo setting (µs) initially detected as servo
- *   stopped.  Nearst value to counterclockwise rotation settings.
+ *   stopped.  Nearest value to counterclockwise rotation settings.
  * @returns initial calculated mid point to use for full stop setting
  */
 unsigned int fineTuneSanityCheck( const unsigned int minZero,
@@ -374,9 +373,9 @@ unsigned int coarseZeroBoundary( const bool isCw,
   wrkStep = RotationDirectionStep ( isCw );
   // start DEBUG block
   if ( isCw ) {
-    barEdge = ccwStr; // Opposide from working direction // DEBUG
+    barEdge = ccwStr; // Opposite from working direction // DEBUG
   } else {
-    barEdge = cwStr; // Opposide from working direction // DEBUG
+    barEdge = cwStr; // Opposite from working direction // DEBUG
   }
   // end DEBUG block
 
@@ -456,9 +455,9 @@ unsigned int fineZeroBOundary( const int forwardSetting, const int backwardSetti
   wrkStep = RotationDirectionStep ( forwardIsCw );
   // start DEBUG block
   if ( forwardIsCw ) {
-    barEdge = ccwStr; // Opposide from working direction // DEBUG
+    barEdge = ccwStr; // Opposite from working direction // DEBUG
   } else {
-    barEdge = cwStr; // Opposide from working direction // DEBUG
+    barEdge = cwStr; // Opposite from working direction // DEBUG
   }
   // end DEBUG block
 
@@ -539,7 +538,7 @@ seekNextEdge ( const bool startSenseState, const unsigned int seekSetting, const
     startRef = * refTime;
   }
   seekLimit = startRef + timeLimit; // Time stamp reference when timeout will occur
-  // TODO if seekLimit < startReff abortAndReport (ABRT_MICROS_WRAPPED)
+  // TODO if seekLimit < startRef abortAndReport (ABRT_MICROS_WRAPPED)
 
   if( digitalRead( sensePin ) != startSenseState ) { // Transition already past
     updateDetectionTime( endSetting, refTime, startRef );
@@ -691,7 +690,7 @@ void profileSpeed( const unsigned int zeroCw, const unsigned int zeroCcw )
   do {
     // Stop stepping when a limit gets reached
     if ( cwTest > CW_HARD_LIMIT ) { // If clockwise (lower) limit not reached yet
-      cwDelta = cwTest - CW_HARD_LIMIT; // Cacluate Deltas first, since
+      cwDelta = cwTest - CW_HARD_LIMIT; // Calculate Deltas first, since
       ccwDelta = CCW_HARD_LIMIT - ccwTest; // ccw not updated yet
       cwTest -= PROFILE_STEP; // Decrease setting by standard step size
       if ( cwDelta > ccwDelta ) { // cw further from limit than ccw
@@ -740,7 +739,7 @@ void saveProfileTime( const unsigned int cwTest, const unsigned int ccwTest, con
 
 
 /**
- * Locate the center setting, that gives 'full stop' for the continuous turn sero
+ * Locate the center setting, that gives 'full stop' for the continuous turn servo
  *
  * Will do this by reversing directions accross the encoder 'bar', measuring the
  * times taken, and searching for the minimum from both ends (maximum ClockWise
@@ -767,7 +766,7 @@ void huntForZero ( unsigned int * cwZero, unsigned int * ccwZero )
   Serial.println (F( "searching..." ));
   // Find the encoder bar, and rotate it a bit past the sensor location
   timeBarCrossing( ccw, tentativeZeroPoint );
-  // Need to find the falling edge of the sensor state transistions, then continue
+  // Need to find the falling edge of the sensor state transitions, then continue
   // for additional time.
   // HPD
   seekNextEdge( HIGH, ccw, 0, -1ul, NULL ); // Rotate encoder bar over sensor
@@ -816,7 +815,7 @@ void huntForZero ( unsigned int * cwZero, unsigned int * ccwZero )
  *
  * @param timetarget - servo speed setting to use for timing
  * @param stopTarget - (best guess) speed setting for full stop
- * @returns crosing time in microsecnds (µs)
+ * @returns crossing time in microseconds (µs)
  */
 unsigned long timeBarCrossing( const int timeTarget, const int stopTarget )
 {
@@ -855,8 +854,8 @@ unsigned long timeBarCrossing( const int timeTarget, const int stopTarget )
  *
  * Find the leading (based on rotation direction) edge of the encoder bar
  *
- * NOTE On exit, the servo will still be rotating, either at the intially
- *  requested speed, or the faster adjusted speed, if a timeout occured
+ * NOTE On exit, the servo will still be rotating, either at the initially
+ *  requested speed, or the faster adjusted speed, if a timeout occurred
  *
  * @param seekSpeed - servo setting to use while looking for the edge of the bar
  * @param stopTarget - (best guess) speed setting for full stop
@@ -891,7 +890,7 @@ bool seekEdgeOfBar( const unsigned int seekSpeed, const unsigned int stopTarget,
 
     // Wait until encoder bar uncovers sensor
     elapsedTime = seekNextEdge( HIGH, 0, 0, EXITBAR_TIMEOUT, & seekStart );
-    if ( elapsedTime == INFINITE_TIME ) { // Timeout in intial seek
+    if ( elapsedTime == INFINITE_TIME ) { // Timeout in inital seek
       // Continue at faster speed
       elapsedTime = seekNextEdge( HIGH, timeoutSpeed, 0, INFINITE_TIME, & seekStart );
     }
@@ -945,8 +944,8 @@ unsigned int getBoostSpeed( const unsigned int baseSpeed,
  *
  * @param cw - clockwise servo setting
  * @param ccw - counterclockwise servo setting
- * @param cwTime - time (micoseconds) for CW crossing
- * @param ccwTime - time (micoseconds) for CCW crossing
+ * @param cwTime - time (microseconds) for CW crossing
+ * @param ccwTime - time (microseconds) for CCW crossing
  */
 unsigned int estimateZeroSetting( const unsigned int cw, const unsigned int ccw,
     const unsigned long cwTime, const unsigned long ccwTime )
@@ -1064,7 +1063,7 @@ void getSamples( const unsigned int speedSetting, const unsigned long refMicros 
 
 
 /**
- * Get the micoseconds time stamp at the end of a rotation.
+ * Get the microseconds time stamp at the end of a rotation.
  *
  * End of a rotation is when the sense pin transitions from HIGH to LOW.
  *
@@ -1084,7 +1083,7 @@ unsigned long timeOneRotation( void )
   while ( !digitalRead( sensePin )) {}
 
   // In the final stretch to time the current rotation
-  digitalWrite( ledPin[ SENSE_EGHO ], HIGH );
+  digitalWrite( ledPin[ SENSE_ECHO ], HIGH );
   digitalWrite( ledPin[ WAIT_MOST ], LOW );
   digitalWrite( ledPin[ WAIT_END ], HIGH );
 
@@ -1092,7 +1091,7 @@ unsigned long timeOneRotation( void )
   while ( digitalRead( sensePin )) {}
   // Sense just went LOW, at the end of a rotation
   endMicros = micros();
-  digitalWrite( ledPin[ SENSE_EGHO ], LOW );
+  digitalWrite( ledPin[ SENSE_ECHO ], LOW );
   digitalWrite( ledPin[ WAIT_END ], LOW );
 
   return endMicros;
@@ -1112,7 +1111,7 @@ unsigned long syncRotation( void )
 
   // Don't know what part of the rotation the system is when this is called, so
   // get the sense pin display in sync first.
-  digitalWrite( ledPin[ SENSE_EGHO ], digitalRead( sensePin )); // Echo sense reading
+  digitalWrite( ledPin[ SENSE_ECHO ], digitalRead( sensePin )); // Echo sense reading
 
   digitalWrite( ledPin[ TIMING_INIT ], HIGH );
   // Get into a consistent starting state: wait for sense to go HIGH (if not already)
@@ -1121,12 +1120,12 @@ unsigned long syncRotation( void )
   // Sense is now HIGH
   digitalWrite( ledPin[ TIMING_INIT ], LOW );
   digitalWrite( ledPin[ WAIT_BEGIN ], HIGH );
-  digitalWrite( ledPin[ SENSE_EGHO ], HIGH );
+  digitalWrite( ledPin[ SENSE_ECHO ], HIGH );
   // Wait for sense to go LOW to mark the start point of a rotation
   while ( digitalRead( sensePin )) {}
   // Sense just went LOW, at the start of a rotation
   startMicros = micros();
-  digitalWrite( ledPin[ SENSE_EGHO ], LOW );
+  digitalWrite( ledPin[ SENSE_ECHO ], LOW );
   digitalWrite( ledPin[ WAIT_BEGIN ], LOW );
 
   return startMicros;
@@ -1185,7 +1184,7 @@ void rptTimingSet( const unsigned int pulseSetting )
  *
  * Determine the ratio of the on time to the total time for a full rotation, so
  * that (later) it is possible to calculate servo rotation speeds with less than
- * a full roation (less than half a rotation).  This needs to be done
+ * a full rotation (less than half a rotation).  This needs to be done
  * dynamically, because the interrupter sensor mounting and encoder are home
  * brew, and not consistent.  The ratio could easily vary from one run to the
  * next.
@@ -1227,7 +1226,7 @@ void autoCalibrateSensor( void )
     rotationParts[ i ].total = rotationParts[ i ].low + rotationParts[ i ].high;
     rotationParts[ i ].highFraction = (double) rotationParts[ i ].high / rotationParts[ i ].total;
 
-    sprintf_P ( gBuf, PSTR ( "Speed: %u, low: %lu, high: %lu, total: %lu, high franction: " ),
+    sprintf_P ( gBuf, PSTR ( "Speed: %u, low: %lu, high: %lu, total: %lu, high fraction: " ),
       rotationParts[ i ].low, rotationParts[ i ].high );
     Serial.print ( gBuf );
     Serial.println ( rotationParts[ i ].highFraction, 5 ); // sprintf not handle float
@@ -1245,7 +1244,7 @@ void autoCalibrateSensor( void )
 void getRotationParts( const int speedSetting, const int idx )
 {
   // conservative µs for servo to come up to full speed for setting
-  const unsigned long stablizeTime = 100000; // 0.1 second
+  const unsigned long stabilizeTime = 100000; // 0.1 second
   int senseState;
   unsigned long refMicros, startHIGHmicros, startLOWmicros, endHIGHmicros, endLOWmicros;
 
@@ -1261,8 +1260,8 @@ void getRotationParts( const int speedSetting, const int idx )
     // Wait for a sense state transition, to get to one of the encoder boundaries
     while( senseState == digitalRead( sensePin )) {} // until sensor state changes
     refMicros = micros(); // Time stamp for when the boundary was seen
-  } while ( refMicros - endLOWmicros < stablizeTime );// until find boundary that
-  // is ALSO at least stablizeTime after the servo target (speed) was set.
+  } while ( refMicros - endLOWmicros < stabilizeTime );// until find boundary that
+  // is ALSO at least stabilizeTime after the servo target (speed) was set.
   digitalWrite( ledPin[ AUTO_SEEK ], LOW );
 
   // refMicros is the start time stamp for a state change / boundary crossing
@@ -1344,7 +1343,7 @@ void tstGetRotParts( void )
 // #define C_SLOW_CCW 1473 // faster than C_SLOW_CW
 // C_SLOW_CW is faster than C_CLOW_CCW (about 2 x)
 /**
- * Manual tunning to check the mid range slow, stop, slow for Servo C
+ * Manual tuning to check the mid range slow, stop, slow for Servo C
  */
 void tstCSlow( void )
 {
@@ -1397,7 +1396,7 @@ void tstDispCnt( void )
  */
 void senseEcho( void )
 {
-  digitalWrite( ledPin[ SENSE_EGHO ], digitalRead( sensePin )); // Echo sense reading
+  digitalWrite( ledPin[ SENSE_ECHO ], digitalRead( sensePin )); // Echo sense reading
 }// ./void senseEcho(…)
 
 
@@ -1450,13 +1449,13 @@ inline unsigned int div2rounded( const unsigned int val )
 
 
 /**
- * Do integer divsion with rounding, without any floating point expressions
+ * Do integer division with rounding, without any floating point expressions
  *
  * NOTE This technique only works for unsigned values
  * NOTE Overflows if (numerator * 2 + denominator) > -1ul, or (denominator * 2) > -1ul
  *
- * @numerator - numerator of divsion expression
- * @denominator - denominator of divsion expression
+ * @numerator - numerator of division expression
+ * @denominator - denominator of division expression
  * @returns round( numerator / denominator )
  */
 inline unsigned long divRounded( const unsigned long numerator, const unsigned long denominator )
